@@ -2,73 +2,57 @@
 import base64
 import json
 import os
-
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 
 app = Flask(__name__)
-    static_folder="public",
-    static_url_path="/static",
+
+
+# STARLIGHT CTF configuration
+FLAG = os.environ.get(
+    "STARLIGHT_FLAG",
+    "ROOT@KNU11{STRXX_L1GHtt_P4Y4LuG4}"
 )
 
-FLAG = "ROOT@KNU11{STRXX_L1GHtt_P4Y4LuG4}"
+
+def encode_payload(data):
+    """Encode JSON as URL-safe Base64 without padding."""
+    raw = json.dumps(data, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def b64url_encode(data):
-    if isinstance(data, str):
-        data = data.encode("utf-8")
-    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+def decode_payload(token):
+    """Decode the challenge token payload."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+
+        payload = parts[1]
+        payload += "=" * (-len(payload) % 4)
+
+        decoded = base64.urlsafe_b64decode(payload)
+        data = json.loads(decoded.decode())
+
+        if isinstance(data, dict):
+            return data
+
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+    return None
 
 
-def b64url_decode(data):
-    data += "=" * (-len(data) % 4)
-    return base64.urlsafe_b64decode(data.encode("ascii"))
-
-
-def create_token(callsign):
-    """Issue a demo JWT-shaped token for the CTF."""
-    header = {"alg": "HS256", "typ": "JWT"}
-    payload = {
-        "sub": callsign,
-        "role": "cadet",
-        "iss": "STARLIGHT",
-    }
-
-    # Intentionally fake signature: this is a CTF, not real authentication.
-    return (
-        f"{b64url_encode(json.dumps(header, separators=(',', ':')))}."
-        f"{b64url_encode(json.dumps(payload, separators=(',', ':')))}."
-        "demo-signature"
-    )
-
-
-def read_unverified_claims(token):
-    """
-    INTENTIONAL CTF VULNERABILITY:
-    The server decodes the JWT payload without validating its signature.
-    Never use this function for production authentication.
-    """
-    parts = token.split(".")
-    if len(parts) != 3:
-        raise ValueError("Malformed token")
-
-    payload = json.loads(b64url_decode(parts[1]).decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("Invalid token payload")
-
-    return payload
-
-
-@app.get("/")
+@app.route("/")
 def index():
     return render_template("index.html")
 
 
-@app.get("/internal-docs")
+@app.route("/internal-docs")
 def internal_docs():
     return render_template("docs.html")
 
 
-@app.get("/robots.txt")
+@app.route("/robots.txt")
 def robots():
     return (
         "User-agent: *\n"
@@ -79,83 +63,104 @@ def robots():
     )
 
 
-@app.post("/api/session")
-def create_session():
-    data = request.get_json(silent=True) or {}
-    callsign = str(data.get("callsign", "cadet")).strip()[:40] or "cadet"
+@app.route("/api/session", methods=["GET", "POST"])
+def session():
+    if request.method == "GET":
+        return jsonify({
+            "service": "STARLIGHT Identity Service",
+            "status": "online",
+            "message": "Submit credentials to obtain a session.",
+        })
 
-    token = create_token(callsign)
+    body = request.get_json(silent=True) or request.form
+
+    username = str(body.get("username", ""))
+    password = str(body.get("password", ""))
+
+    if username == "operator" and password == "starlight2026":
+        token = encode_payload({
+            "sub": "operator",
+            "role": "user",
+        })
+
+        # This is a deliberately vulnerable CTF token.
+        return jsonify({
+            "success": True,
+            "token": f"header.{token}.signature",
+            "message": "Session created.",
+        })
+
     return jsonify({
-        "status": "SESSION ESTABLISHED",
-        "callsign": callsign,
-        "token": token,
-        "message": "Inspect the token and the access protocol.",
-    })
+        "success": False,
+        "message": "Invalid username or password.",
+    }), 401
 
 
-@app.post("/api/profile")
+@app.route("/api/profile")
 def profile():
-    data = request.get_json(silent=True) or {}
-    token = str(data.get("token", "")).strip()
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
 
-    try:
-        claims = read_unverified_claims(token)
-    except (ValueError, IndexError, KeyError, TypeError, json.JSONDecodeError):
+    payload = decode_payload(token) if token else None
+
+    if not payload:
         return jsonify({
-            "ok": False,
-            "error": "Invalid token format.",
-        }), 400
-    except Exception:
-        return jsonify({
-            "ok": False,
-            "error": "Could not read token.",
-        }), 400
-
-    return jsonify({
-        "ok": True,
-        "callsign": claims.get("sub", "unknown"),
-        "role": claims.get("role", "unknown"),
-        "issuer": claims.get("iss", "unknown"),
-        "notice": "Claims decoded. This endpoint does not verify the signature.",
-    })
-
-
-@app.get("/api/archive")
-def archive():
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.removeprefix("Bearer ").strip()
-
-    if not token:
-        data = request.get_json(silent=True) or {}
-        token = str(data.get("token", "")).strip()
-
-    try:
-        claims = read_unverified_claims(token)
-    except Exception:
-        return jsonify({
-            "ok": False,
-            "error": "A validly formatted access token is required.",
+            "error": "Missing or invalid session token.",
         }), 401
 
-    # INTENTIONAL FLAW: role is trusted without cryptographic verification.
-    if claims.get("role") != "admin":
-        return jsonify({
-            "ok": False,
-            "error": "Restricted archive. Admin clearance required.",
-            "current_role": claims.get("role", "unknown"),
-        }), 403
-
     return jsonify({
-        "ok": True,
-        "archive": "STARLIGHT // RESTRICTED TRANSMISSION",
-        "flag": FLAG,
+        "username": payload.get("sub", "unknown"),
+        "role": payload.get("role", "user"),
+        "message": "Profile retrieved successfully.",
     })
 
 
-@app.get("/health")
+@app.route("/api/archive")
+def archive():
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+
+    payload = decode_payload(token) if token else None
+
+    if not payload:
+        return jsonify({
+            "error": "Missing or invalid session token.",
+        }), 401
+
+    # INTENTIONAL VULNERABILITY:
+    # The challenge decodes the payload without verifying the signature.
+    if payload.get("role") == "admin":
+        return jsonify({
+            "success": True,
+            "archive": "CLASSIFIED",
+            "flag": FLAG,
+        })
+
+    return jsonify({
+        "error": "Forbidden. Administrator role required.",
+        "role": payload.get("role", "user"),
+    }), 403
+
+
+@app.route("/health")
 def health():
-    return jsonify({"status": "online", "service": "STARLIGHT"})
+    return jsonify({
+        "status": "ok",
+        "service": "STARLIGHT",
+    })
+
+
+@app.errorhandler(404)
+def not_found(error):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Endpoint not found."}), 404
+
+    return "Not Found", 404
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", "5000")), debug=False)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=False,
+    )
