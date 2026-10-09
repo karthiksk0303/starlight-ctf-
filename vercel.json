@@ -1,4 +1,4 @@
-
+```json
 {
   "version": 2,
   "builds": [
@@ -9,12 +9,9 @@
   ],
   "routes": [
     {
-      "src": "/style.css",
-      "dest": "/public/style.css"
-    },
-    {
       "src": "/(.*)",
       "dest": "app.py"
     }
   ]
 }
+```
