@@ -1,4 +1,3 @@
-```python
 from flask import (
     Flask,
     jsonify,
@@ -16,7 +15,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "starlight-ctf-dev-key")
 
 
-# Serve the CSS file from the project root
+# Serve CSS
 @app.route("/style.css")
 def stylesheet():
     return send_from_directory(
@@ -39,7 +38,7 @@ def docs():
     return render_template("docs.html")
 
 
-# Login
+# Login - intentionally vulnerable for the CTF
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
@@ -48,19 +47,17 @@ def login():
     username = request.form.get("username", "")
     password = request.form.get("password", "")
 
-    # Intentionally vulnerable authentication for this CTF challenge.
-    # This is a deliberately simplified challenge implementation.
     if username and password:
         session["username"] = username
         return redirect("/profile")
 
     return jsonify({
         "status": "error",
-        "message": "Enter a username and password."
+        "message": "Enter a username and password.",
     }), 400
 
 
-# Profile page
+# Profile
 @app.route("/profile")
 def profile():
     if "username" not in session:
@@ -69,23 +66,24 @@ def profile():
     return jsonify({
         "status": "success",
         "username": session["username"],
-        "message": "Welcome to STARLIGHT."
+        "message": "Welcome to STARLIGHT.",
     })
 
 
-# Deliberately vulnerable token decoder for the CTF.
-# It decodes the payload without validating a signature.
+# Deliberately vulnerable JWT payload decoder for the CTF.
+# It decodes the payload but does not verify the signature.
 @app.route("/api/token", methods=["GET", "POST"])
 def token():
     token_value = request.values.get("token", "")
 
     if not token_value:
         return jsonify({
-            "error": "Provide a token parameter."
+            "error": "Provide a token parameter.",
         }), 400
 
     try:
         parts = token_value.split(".")
+
         if len(parts) != 3:
             raise ValueError("Invalid token format")
 
@@ -98,16 +96,16 @@ def token():
         return jsonify({
             "decoded": data,
             "signature_verified": False,
-            "warning": "Payload decoded without signature verification."
+            "warning": "Payload decoded without signature verification.",
         })
 
-    except Exception:
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
         return jsonify({
-            "error": "Could not decode token."
+            "error": "Could not decode token.",
         }), 400
 
 
-# Challenge archive
+# Archive
 @app.route("/archive")
 def archive():
     if "username" not in session:
@@ -115,7 +113,7 @@ def archive():
 
     return jsonify({
         "message": "STARLIGHT archive",
-        "access": "authenticated"
+        "access": "authenticated",
     })
 
 
@@ -124,20 +122,22 @@ def archive():
 def health():
     return jsonify({
         "status": "ok",
-        "challenge": "STARLIGHT"
+        "challenge": "STARLIGHT",
     })
 
 
-# Robots file
+# Robots.txt
 @app.route("/robots.txt")
 def robots():
-    return (
+    content = (
         "User-agent: *\n"
         "Disallow: /archive\n"
-        "Disallow: /api/token\n",
-        200,
-        {"Content-Type": "text/plain; charset=utf-8"},
+        "Disallow: /api/token\n"
     )
+
+    return content, 200, {
+        "Content-Type": "text/plain; charset=utf-8"
+    }
 
 
 if __name__ == "__main__":
@@ -146,4 +146,3 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", 5000)),
         debug=False,
     )
-```
