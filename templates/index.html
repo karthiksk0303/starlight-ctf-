@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09090d"><title>STARLIGHT // Security Division</title>
+  <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+  <div class="stars"></div><div class="orb orb-one"></div><div class="orb orb-two"></div>
+  <nav class="topbar"><a class="brand" href="/"><span class="brand-mark">✦</span> STARLIGHT <span class="brand-sub">SECURITY DIVISION</span></a><span class="status"><i></i> SYSTEM ONLINE</span></nav>
+  <main class="layout">
+    <section class="hero">
+      <div class="eyebrow"><span class="eyebrow-line"></span> DEEP SPACE IDENTITY NETWORK</div>
+      <h1>Trust is a<br><span class="gradient">fragile thing.</span></h1>
+      <p class="intro">A signal from the outer archive has been intercepted. Authenticate, inspect the access protocol, and uncover what the system is hiding.</p>
+      <div class="metrics"><div><b>07</b><span>SECTORS</span></div><div><b>01</b><span>RESTRICTED ARCHIVE</span></div><div><b>?</b><span>UNKNOWN SIGNAL</span></div></div>
+      <div class="transmission"><span class="pulse"></span><div><small>INCOMING TRANSMISSION</small><p>“The token says who you are. But should you trust what it says?”</p></div></div>
+    </section>
+    <section class="panel-wrap">
+      <div class="panel-glow"></div><div class="panel">
+        <div class="panel-head"><div><span class="tiny-label">IDENTITY GATEWAY</span><h2>Access terminal</h2></div><span class="lock-icon">⌁</span></div>
+        <p class="panel-copy">Issue a cadet access token to connect to the STARLIGHT network.</p>
+        <form id="login-form">
+          <label for="username">CALLSIGN</label><div class="input-shell"><span>›</span><input id="username" name="username" maxlength="40" placeholder="e.g. stardust_07" value="cadet" autocomplete="off" required></div>
+          <button type="submit" id="login-btn"><span>INITIALIZE SESSION</span><b>↗</b></button>
+        </form>
+        <div id="notice" class="notice" role="status">Awaiting identity handshake<span class="blink">_</span></div>
+        <div id="session" class="session hidden"><div class="session-top"><span>SESSION ESTABLISHED</span><span class="pill">CADET</span></div><div class="token-label">ACCESS TOKEN</div><textarea id="token" readonly spellcheck="false"></textarea><div class="actions"><button id="copy-btn" class="secondary" type="button">COPY TOKEN</button><button id="profile-btn" class="secondary" type="button">CHECK PROFILE</button></div><div id="profile-result" class="result hidden"></div></div>
+        <div class="panel-foot"><span>ENCRYPTION LAYER <b>ACTIVE*</b></span><span>BUILD 0.9.7</span></div>
+      </div>
+      <div class="footnote">*System diagnostics may not reflect actual trust validation.</div>
+    </section>
+  </main>
+  <footer><span>© STARLIGHT NETWORK</span><span>AUTHORIZED PERSONNEL ONLY</span><a href="/internal-docs">PROTOCOL NOTES ↗</a></footer>
+  <script>
+    const form = document.querySelector('#login-form');
+    const notice = document.querySelector('#notice');
+    const session = document.querySelector('#session');
+    const tokenBox = document.querySelector('#token');
+    const result = document.querySelector('#profile-result');
+    let token = '';
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.querySelector('#login-btn'); btn.disabled = true;
+      notice.textContent = 'Establishing secure handshake…';
+      try {
+        const r = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.querySelector('#username').value})});
+        const data = await r.json(); if (!r.ok) throw new Error(data.error || 'Handshake failed');
+        token = data.token; tokenBox.value = token; session.classList.remove('hidden'); result.classList.add('hidden');
+        notice.textContent = 'Handshake complete. Inspect the protocol before requesting higher clearance.';
+      } catch (err) { notice.textContent = 'Connection error: ' + err.message; }
+      finally { btn.disabled = false; }
+    });
+    document.querySelector('#copy-btn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(token); notice.textContent = 'Token copied to clipboard.'; } catch { tokenBox.select(); document.execCommand('copy'); notice.textContent = 'Token selected for copying.'; } });
+    document.querySelector('#profile-btn').addEventListener('click', async () => {
+      result.classList.remove('hidden'); result.textContent = 'Querying identity service…';
+      try { const r = await fetch('/api/profile',{headers:{Authorization:'Bearer '+token}}); const d = await r.json(); result.textContent = JSON.stringify(d,null,2); }
+      catch { result.textContent = 'Identity service unreachable.'; }
+    });
+  </script>
+</body></html>
